@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import html2canvas from "html2canvas";
 
 // ─── Data ───
 const AREA_UNITS = [
@@ -128,29 +129,107 @@ function MathInput({
   );
 }
 
+// ─── Share helper ───
+async function shareResults(element: HTMLElement) {
+  try {
+    const canvas = await html2canvas(element, {
+      backgroundColor: "#f0fdf4",
+      scale: 2,
+      useCORS: true,
+    });
+    const blob = await new Promise<Blob>((resolve) =>
+      canvas.toBlob((b) => resolve(b!), "image/png")
+    );
+    const file = new File([blob], "area-calculation.png", { type: "image/png" });
+
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({
+        title: "Area Calculation",
+        text: "Check out this area conversion!",
+        files: [file],
+      });
+    } else {
+      // Fallback: download the image
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "area-calculation.png";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    if ((err as Error).name !== "AbortError") {
+      console.error("Share failed:", err);
+    }
+  }
+}
+
 // ─── Results Grid (compact, 2-col on mobile, 3-col on wider) ───
-function ResultsGrid({ areaSqm, label }: { areaSqm: number; label: string }) {
+function ResultsGrid({
+  areaSqm,
+  label,
+  onSave,
+}: {
+  areaSqm: number;
+  label: string;
+  onSave?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [sharing, setSharing] = useState(false);
   const results = useMemo(
     () => AREA_UNITS.map((u) => ({ ...u, value: convertArea(areaSqm, u.key) })),
     [areaSqm]
   );
+
+  const handleShare = useCallback(async () => {
+    if (!ref.current) return;
+    setSharing(true);
+    await shareResults(ref.current);
+    setSharing(false);
+  }, []);
+
   return (
     <div className="space-y-2">
-      <div className="px-1 text-xs font-semibold text-emerald-700">{label}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {results.map((r) => (
-          <div
-            key={r.key}
-            className="bg-white rounded-xl p-3 ring-1 ring-gray-100 shadow-sm"
+      <div ref={ref} className="space-y-2 p-2 -m-2 rounded-2xl">
+        <div className="px-1 text-xs font-semibold text-emerald-700">{label}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {results.map((r) => (
+            <div
+              key={r.key}
+              className="bg-white rounded-xl p-3 ring-1 ring-gray-100 shadow-sm"
+            >
+              <div className="text-lg font-bold text-gray-900 tabular-nums leading-tight">
+                {fmt(r.value)}
+              </div>
+              <div className="text-[11px] font-medium text-gray-500 mt-0.5">
+                {r.labelHi} <span className="text-gray-400">({r.label})</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        {onSave && (
+          <button
+            onClick={onSave}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 rounded-xl text-sm font-medium text-white active:bg-emerald-700 transition-all shadow-sm"
           >
-            <div className="text-lg font-bold text-gray-900 tabular-nums leading-tight">
-              {fmt(r.value)}
-            </div>
-            <div className="text-[11px] font-medium text-gray-500 mt-0.5">
-              {r.labelHi} <span className="text-gray-400">({r.label})</span>
-            </div>
-          </div>
-        ))}
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+            </svg>
+            Save
+          </button>
+        )}
+        <button
+          onClick={handleShare}
+          disabled={sharing}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white rounded-xl ring-1 ring-gray-200 text-sm font-medium text-gray-600 active:bg-gray-50 disabled:opacity-50 transition-all shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+          </svg>
+          {sharing ? "..." : "Share"}
+        </button>
       </div>
     </div>
   );
@@ -227,6 +306,7 @@ function SimpleConverter({
       <ResultsGrid
         areaSqm={sqm}
         label={`${fmt(num)} ${unitData.labelHi} (${unitData.label}) =`}
+        onSave={save}
       />
 
       {/* Compact reference */}
