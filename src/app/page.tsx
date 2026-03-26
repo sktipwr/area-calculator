@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import html2canvas from "html2canvas";
 
 // ─── Data ───
 const AREA_UNITS = [
@@ -16,7 +15,6 @@ const AREA_UNITS = [
 ] as const;
 
 type AreaUnitKey = (typeof AREA_UNITS)[number]["key"];
-
 
 // ─── Helpers ───
 function convertArea(sqm: number, toKey: AreaUnitKey): number {
@@ -116,12 +114,12 @@ function MathInput({
         placeholder={placeholder}
         className={
           large
-            ? "w-full text-3xl font-bold text-gray-900 bg-transparent outline-none"
-            : "w-full h-10 text-base font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 outline-none border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+            ? "w-full text-5xl font-bold text-gray-900 bg-transparent outline-none py-2"
+            : "w-full h-12 text-lg font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 outline-none border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
         }
       />
       {hasExpr && evaluated !== null && (
-        <div className={`text-xs font-medium mt-0.5 text-emerald-600 ${large ? "" : "px-1"}`}>
+        <div className={`text-sm font-medium mt-1 text-emerald-600 ${large ? "" : "px-1"}`}>
           = {fmt(evaluated)}
         </div>
       )}
@@ -129,42 +127,62 @@ function MathInput({
   );
 }
 
-// ─── Share helper ───
-async function shareResults(element: HTMLElement) {
+// ─── Share helper (dynamic import to avoid SSR issues) ───
+async function shareResults(element: HTMLElement, label: string, results: { labelHi: string; label: string; value: number }[]) {
   try {
+    // Dynamic import — html2canvas doesn't work with SSR
+    const html2canvas = (await import("html2canvas")).default;
+
     const canvas = await html2canvas(element, {
       backgroundColor: "#f0fdf4",
       scale: 2,
       useCORS: true,
+      logging: false,
     });
-    const blob = await new Promise<Blob>((resolve) =>
-      canvas.toBlob((b) => resolve(b!), "image/png")
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/png")
     );
-    const file = new File([blob], "area-calculation.png", { type: "image/png" });
 
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({
-        title: "Area Calculation",
-        text: "Check out this area conversion!",
-        files: [file],
-      });
-    } else {
-      // Fallback: download the image
+    if (blob) {
+      const file = new File([blob], "area-calculation.png", { type: "image/png" });
+
+      // Try native share with image
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: "Area Calculation",
+          text: label,
+          files: [file],
+        });
+        return;
+      }
+
+      // Fallback: download
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = "area-calculation.png";
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      return;
     }
   } catch (err) {
-    if ((err as Error).name !== "AbortError") {
-      console.error("Share failed:", err);
-    }
+    if ((err as Error).name === "AbortError") return;
+    console.warn("Image share failed, falling back to text:", err);
+  }
+
+  // Final fallback: share as text
+  const text = `${label}\n\n` + results.map((r) => `${r.labelHi} (${r.label}): ${fmt(r.value)}`).join("\n");
+  if (navigator.share) {
+    await navigator.share({ title: "Area Calculation", text });
+  } else {
+    await navigator.clipboard.writeText(text);
+    alert("Copied to clipboard!");
   }
 }
 
-// ─── Results Grid (compact, 2-col on mobile, 3-col on wider) ───
+// ─── Results Grid ───
 function ResultsGrid({
   areaSqm,
   label,
@@ -176,6 +194,7 @@ function ResultsGrid({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
+  const [saved, setSaved] = useState(false);
   const results = useMemo(
     () => AREA_UNITS.map((u) => ({ ...u, value: convertArea(areaSqm, u.key) })),
     [areaSqm]
@@ -184,14 +203,20 @@ function ResultsGrid({
   const handleShare = useCallback(async () => {
     if (!ref.current) return;
     setSharing(true);
-    await shareResults(ref.current);
+    await shareResults(ref.current, label, results);
     setSharing(false);
-  }, []);
+  }, [label, results]);
+
+  const handleSave = useCallback(() => {
+    onSave?.();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }, [onSave]);
 
   return (
     <div className="space-y-2">
-      <div ref={ref} className="space-y-2 p-2 -m-2 rounded-2xl">
-        <div className="px-1 text-xs font-semibold text-emerald-700">{label}</div>
+      <div ref={ref} className="space-y-2 rounded-2xl bg-gradient-to-b from-emerald-50/50 to-transparent p-3 -mx-1">
+        <div className="px-1 text-sm font-semibold text-emerald-700">{label}</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {results.map((r) => (
             <div
@@ -208,27 +233,29 @@ function ResultsGrid({
           ))}
         </div>
       </div>
-      <div className="flex gap-2">
+
+      {/* Buttons with spacing */}
+      <div className="flex gap-2 pt-2">
         {onSave && (
           <button
-            onClick={onSave}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 rounded-xl text-sm font-medium text-white active:bg-emerald-700 transition-all shadow-sm"
+            onClick={handleSave}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 rounded-xl text-sm font-medium text-white active:bg-emerald-700 transition-all shadow-sm"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
             </svg>
-            Save
+            {saved ? "Saved!" : "Save"}
           </button>
         )}
         <button
           onClick={handleShare}
           disabled={sharing}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white rounded-xl ring-1 ring-gray-200 text-sm font-medium text-gray-600 active:bg-gray-50 disabled:opacity-50 transition-all shadow-sm"
+          className="flex-1 flex items-center justify-center gap-2 py-3 bg-white rounded-xl ring-1 ring-gray-200 text-sm font-medium text-gray-600 active:bg-gray-50 disabled:opacity-50 transition-all shadow-sm"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
           </svg>
-          {sharing ? "..." : "Share"}
+          {sharing ? "Sharing..." : "Share"}
         </button>
       </div>
     </div>
@@ -246,12 +273,12 @@ function ChipRow<T extends string>({
   onSelect: (k: T) => void;
 }) {
   return (
-    <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
+    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
       {items.map((u) => (
         <button
           key={u.key}
           onClick={() => onSelect(u.key)}
-          className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+          className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
             selected === u.key
               ? "bg-emerald-600 text-white shadow-sm"
               : "bg-gray-100 text-gray-600 active:bg-gray-200"
@@ -264,7 +291,7 @@ function ChipRow<T extends string>({
   );
 }
 
-// ─── Tab 1: Converter (compact) ───
+// ─── Converter ───
 function SimpleConverter({
   onSave,
 }: {
@@ -289,8 +316,8 @@ function SimpleConverter({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-gray-200 p-4 space-y-3">
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl shadow-sm ring-1 ring-gray-200 p-5 space-y-4">
         <MathInput
           value={input}
           onChange={(r, n) => { setInput(r); setNum(n); }}
@@ -298,7 +325,7 @@ function SimpleConverter({
           large
         />
         <ChipRow items={AREA_UNITS as any} selected={unit} onSelect={setUnit} />
-        <p className="text-[10px] text-gray-300 text-center">
+        <p className="text-[11px] text-gray-300 text-center">
           supports +, -, *, / — press Enter to save
         </p>
       </div>
@@ -309,7 +336,6 @@ function SimpleConverter({
         onSave={save}
       />
 
-      {/* Compact reference */}
       <details className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200">
         <summary className="px-4 py-2.5 text-xs font-semibold text-gray-500 cursor-pointer select-none">
           Quick Reference / त्वरित संदर्भ
@@ -333,7 +359,7 @@ function SimpleConverter({
   );
 }
 
-// ─── Tab 2: History (compact) ───
+// ─── History ───
 function HistoryTab({
   entries,
   onClear,
@@ -352,7 +378,7 @@ function HistoryTab({
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p className="text-sm text-gray-400">No history yet</p>
-        <p className="text-[10px] text-gray-300 mt-1">Press Enter to save calculations</p>
+        <p className="text-[10px] text-gray-300 mt-1">Press Enter or Save to store calculations</p>
       </div>
     );
   }
@@ -374,10 +400,8 @@ function HistoryTab({
               onClick={() => setExpandedId(open ? null : e.id)}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-left active:bg-gray-50"
             >
-              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                e.type === "convert" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-              }`}>
-                {e.type === "convert" ? "UC" : "PC"}
+              <span className="w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold shrink-0 bg-emerald-100 text-emerald-700">
+                UC
               </span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-800 truncate">{e.input}</div>
@@ -427,30 +451,28 @@ export default function AreaCalculator() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-amber-50/30">
-      {/* Compact header */}
       <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-3 pt-3 pb-0">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <div className="max-w-lg mx-auto px-4 pt-3 pb-0">
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0">
+              <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z" />
               </svg>
             </div>
             <div>
-              <h1 className="text-base font-bold text-gray-900 leading-tight">
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">
                 Area Calculator
               </h1>
-              <p className="text-[10px] text-gray-400">भूमि क्षेत्रफल कैलकुलेटर</p>
+              <p className="text-[11px] text-gray-400">भूमि क्षेत्रफल कैलकुलेटर</p>
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="flex">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex-1 py-2 text-xs font-medium text-center border-b-2 transition-colors ${
+                className={`flex-1 py-2.5 text-xs font-medium text-center border-b-2 transition-colors ${
                   tab === t.key
                     ? "border-emerald-600 text-emerald-700"
                     : "border-transparent text-gray-400 active:text-gray-600"
@@ -458,7 +480,7 @@ export default function AreaCalculator() {
               >
                 {t.label}
                 {t.key === "history" && h.entries.length > 0 && (
-                  <span className="ml-1 inline-flex items-center justify-center min-w-[14px] h-3.5 text-[9px] font-bold bg-emerald-600 text-white rounded-full px-1">
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 text-[10px] font-bold bg-emerald-600 text-white rounded-full px-1">
                     {h.entries.length}
                   </span>
                 )}
@@ -469,7 +491,7 @@ export default function AreaCalculator() {
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-3 py-4">
+      <main className="max-w-lg mx-auto px-4 py-4">
         {tab === "convert" && <SimpleConverter onSave={h.add} />}
         {tab === "history" && (
           <HistoryTab entries={h.entries} onClear={h.clear} onRemove={h.remove} />
