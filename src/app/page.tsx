@@ -133,8 +133,8 @@ function MathInput({
         placeholder={placeholder}
         className={
           large
-            ? "w-full text-5xl font-bold text-gray-900 bg-transparent outline-none py-2"
-            : "w-full h-12 text-lg font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 outline-none border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+            ? "w-full text-5xl font-bold text-gray-900 bg-transparent outline-none py-2 placeholder:text-gray-200 placeholder:font-normal placeholder:text-3xl"
+            : "w-full h-12 text-lg font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 outline-none border border-gray-200 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all placeholder:text-gray-200"
         }
       />
       {hasExpr && evaluated !== null && (
@@ -335,12 +335,10 @@ function SimpleConverter({
   const [unit, setUnit] = useState<AreaUnitKey>("hectare");
   const [rateInput, setRateInput] = useState("");
   const [rateNum, setRateNum] = useState(0);
-  const [showRate, setShowRate] = useState(false);
 
   const unitData = AREA_UNITS.find((u) => u.key === unit)!;
   const sqm = num * unitData.sqm;
 
-  // cost: rate is per selected unit, so ratePerSqm = rate / unitData.sqm
   const ratePerSqm = rateNum > 0 ? rateNum / unitData.sqm : 0;
 
   const save = () => {
@@ -358,50 +356,43 @@ function SimpleConverter({
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-gray-200 p-5 space-y-4">
-        <MathInput
-          value={input}
-          onChange={(r, n) => { setInput(r); setNum(n); }}
-          onEnter={save}
-          large
-        />
-        <ChipRow items={AREA_UNITS as any} selected={unit} onSelect={setUnit} />
-
-        {/* Rate toggle + input */}
-        <div className="border-t border-gray-100 pt-3">
-          <button
-            onClick={() => setShowRate(!showRate)}
-            className="flex items-center gap-2 text-xs font-medium text-emerald-600 active:text-emerald-700"
-          >
-            <div className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 ${showRate ? "bg-emerald-500" : "bg-gray-200"}`}>
-              <div className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${showRate ? "translate-x-3.5" : "translate-x-0"}`} />
-            </div>
-            <span>Add Rate / दर जोड़ें</span>
-            <span className="text-[10px] text-gray-400">(₹ per {unitData.labelHi})</span>
-          </button>
-
-          {showRate && (
-            <div className="mt-3 flex items-center gap-2 bg-amber-50 rounded-xl p-3 ring-1 ring-amber-200/50">
-              <span className="text-xl font-bold text-amber-600">₹</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={rateInput}
-                onChange={(e) => {
-                  setRateInput(e.target.value);
-                  setRateNum(safeEval(e.target.value) ?? 0);
-                }}
-                placeholder="18,000"
-                className="w-full text-2xl font-bold text-gray-900 bg-transparent outline-none"
-              />
-              <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                / {unitData.labelHi}
-              </span>
-            </div>
-          )}
+        {/* Two-field input row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-medium text-gray-300 uppercase tracking-wider mb-1.5 block">
+              Area / क्षेत्रफल
+            </label>
+            <MathInput
+              value={input}
+              onChange={(r, n) => { setInput(r); setNum(n); }}
+              onEnter={save}
+              large
+              placeholder="1"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-medium text-gray-300 uppercase tracking-wider mb-1.5 block">
+              ₹ Rate / दर <span className="normal-case">(optional)</span>
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={rateInput}
+              onChange={(e) => {
+                setRateInput(e.target.value);
+                setRateNum(safeEval(e.target.value) ?? 0);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && save()}
+              placeholder={`₹ / ${unitData.labelHi}`}
+              className="w-full text-3xl font-bold text-gray-900 bg-transparent outline-none py-2 placeholder:text-gray-200 placeholder:font-normal placeholder:text-2xl"
+            />
+          </div>
         </div>
 
-        <p className="text-[11px] text-gray-300 text-center">
-          supports +, -, *, / — press Enter to save
+        <ChipRow items={AREA_UNITS as any} selected={unit} onSelect={setUnit} />
+
+        <p className="text-[10px] text-gray-200 text-center">
+          supports +, -, *, /
         </p>
       </div>
 
