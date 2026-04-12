@@ -4,12 +4,12 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 
 // ─── Data ───
 const AREA_UNITS = [
-  { key: "hectare", label: "Hectare", labelHi: "हेक्टर", sqm: 10000 },
+  { key: "gaj", label: "Gaj", labelHi: "गज", sqm: 0.83612736 },
   { key: "bigha", label: "Bigha", labelHi: "बीघा", sqm: 683 },
   { key: "biswa", label: "Biswa", labelHi: "बिस्वा", sqm: 34.15 },
   { key: "sqm", label: "Sq. Meter", labelHi: "वर्ग मीटर", sqm: 1 },
   { key: "sqft", label: "Sq. Feet", labelHi: "वर्ग फुट", sqm: 0.09290304 },
-  { key: "gaj", label: "Gaj", labelHi: "गज", sqm: 0.83612736 },
+  { key: "hectare", label: "Hectare", labelHi: "हेक्टर", sqm: 10000 },
   { key: "acre", label: "Acre", labelHi: "एकड़", sqm: 4046.8564224 },
   { key: "kanal", label: "Kanal", labelHi: "कनाल", sqm: 505.857 },
 ] as const;
@@ -332,7 +332,7 @@ function SimpleConverter({
 }) {
   const [input, setInput] = useState("1");
   const [num, setNum] = useState(1);
-  const [unit, setUnit] = useState<AreaUnitKey>("hectare");
+  const [unit, setUnit] = useState<AreaUnitKey>("gaj");
   const [rateInput, setRateInput] = useState("");
   const [rateNum, setRateNum] = useState(0);
 
