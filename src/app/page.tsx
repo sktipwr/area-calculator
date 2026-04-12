@@ -30,6 +30,25 @@ function fmt(n: number): string {
   return n.toPrecision(4);
 }
 
+function fmtINR(n: number): string {
+  if (n === 0) return "₹0";
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_00_00_000) {
+    const cr = abs / 1_00_00_000;
+    return `${sign}₹${cr.toLocaleString("en-IN", { maximumFractionDigits: 2 })} Cr`;
+  }
+  if (abs >= 1_00_000) {
+    const lakh = abs / 1_00_000;
+    return `${sign}₹${lakh.toLocaleString("en-IN", { maximumFractionDigits: 2 })} Lakh`;
+  }
+  if (abs >= 1_000) {
+    const hazar = abs / 1_000;
+    return `${sign}₹${hazar.toLocaleString("en-IN", { maximumFractionDigits: 2 })} Hazaar`;
+  }
+  return `${sign}₹${abs.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
 function safeEval(expr: string): number | null {
   const cleaned = expr.replace(/\s/g, "").replace(/x/gi, "*");
   if (!/^[0-9+\-*/().]+$/.test(cleaned) || !cleaned) return null;
@@ -187,17 +206,25 @@ function ResultsGrid({
   areaSqm,
   label,
   onSave,
+  ratePerSqm = 0,
+  rateUnitLabel = "",
 }: {
   areaSqm: number;
   label: string;
   onSave?: () => void;
+  ratePerSqm?: number;
+  rateUnitLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
   const [saved, setSaved] = useState(false);
   const results = useMemo(
-    () => AREA_UNITS.map((u) => ({ ...u, value: convertArea(areaSqm, u.key) })),
-    [areaSqm]
+    () => AREA_UNITS.map((u) => ({
+      ...u,
+      value: convertArea(areaSqm, u.key),
+      cost: ratePerSqm > 0 ? ratePerSqm * u.sqm : 0,
+    })),
+    [areaSqm, ratePerSqm]
   );
 
   const handleShare = useCallback(async () => {
@@ -229,6 +256,12 @@ function ResultsGrid({
               <div className="text-[11px] font-medium text-gray-500 mt-0.5">
                 {r.labelHi} <span className="text-gray-400">({r.label})</span>
               </div>
+              {r.cost > 0 && (
+                <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                  <div className="text-sm font-bold text-amber-700">{fmtINR(r.cost)}</div>
+                  <div className="text-[10px] text-gray-400">per {r.labelHi}</div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -300,8 +333,15 @@ function SimpleConverter({
   const [input, setInput] = useState("1");
   const [num, setNum] = useState(1);
   const [unit, setUnit] = useState<AreaUnitKey>("hectare");
+  const [rateInput, setRateInput] = useState("");
+  const [rateNum, setRateNum] = useState(0);
+  const [showRate, setShowRate] = useState(false);
+
   const unitData = AREA_UNITS.find((u) => u.key === unit)!;
   const sqm = num * unitData.sqm;
+
+  // cost: rate is per selected unit, so ratePerSqm = rate / unitData.sqm
+  const ratePerSqm = rateNum > 0 ? rateNum / unitData.sqm : 0;
 
   const save = () => {
     if (num <= 0) return;
@@ -325,6 +365,41 @@ function SimpleConverter({
           large
         />
         <ChipRow items={AREA_UNITS as any} selected={unit} onSelect={setUnit} />
+
+        {/* Rate toggle + input */}
+        <div className="border-t border-gray-100 pt-3">
+          <button
+            onClick={() => setShowRate(!showRate)}
+            className="flex items-center gap-2 text-xs font-medium text-emerald-600 active:text-emerald-700"
+          >
+            <div className={`w-8 h-[18px] rounded-full transition-colors flex items-center px-0.5 ${showRate ? "bg-emerald-500" : "bg-gray-200"}`}>
+              <div className={`w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${showRate ? "translate-x-3.5" : "translate-x-0"}`} />
+            </div>
+            <span>Add Rate / दर जोड़ें</span>
+            <span className="text-[10px] text-gray-400">(₹ per {unitData.labelHi})</span>
+          </button>
+
+          {showRate && (
+            <div className="mt-3 flex items-center gap-2 bg-amber-50 rounded-xl p-3 ring-1 ring-amber-200/50">
+              <span className="text-xl font-bold text-amber-600">₹</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={rateInput}
+                onChange={(e) => {
+                  setRateInput(e.target.value);
+                  setRateNum(safeEval(e.target.value) ?? 0);
+                }}
+                placeholder="18,000"
+                className="w-full text-2xl font-bold text-gray-900 bg-transparent outline-none"
+              />
+              <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                / {unitData.labelHi}
+              </span>
+            </div>
+          )}
+        </div>
+
         <p className="text-[11px] text-gray-300 text-center">
           supports +, -, *, / — press Enter to save
         </p>
@@ -334,6 +409,8 @@ function SimpleConverter({
         areaSqm={sqm}
         label={`${fmt(num)} ${unitData.labelHi} (${unitData.label}) =`}
         onSave={save}
+        ratePerSqm={ratePerSqm}
+        rateUnitLabel={unitData.labelHi}
       />
 
       <details className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200">
