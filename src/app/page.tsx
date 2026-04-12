@@ -357,21 +357,26 @@ function SimpleConverter({
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm ring-1 ring-gray-200 p-5 space-y-4">
         {/* Two-field input row */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-medium text-gray-300 uppercase tracking-wider mb-1.5 block">
+        <div className="grid grid-cols-2 gap-0">
+          <div className="pr-4 border-r border-gray-100">
+            <label className="text-[10px] font-medium text-gray-300 uppercase tracking-wider mb-1 block">
               Area / क्षेत्रफल
             </label>
-            <MathInput
+            <input
+              type="text"
+              inputMode="decimal"
               value={input}
-              onChange={(r, n) => { setInput(r); setNum(n); }}
-              onEnter={save}
-              large
+              onChange={(e) => {
+                setInput(e.target.value);
+                setNum(safeEval(e.target.value) ?? 0);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && save()}
               placeholder="1"
+              className="w-full text-4xl font-bold text-gray-900 bg-transparent outline-none py-2 placeholder:text-gray-200"
             />
           </div>
-          <div>
-            <label className="text-[10px] font-medium text-gray-300 uppercase tracking-wider mb-1.5 block">
+          <div className="pl-4">
+            <label className="text-[10px] font-medium text-gray-300 uppercase tracking-wider mb-1 block">
               ₹ Rate / दर <span className="normal-case">(optional)</span>
             </label>
             <input
@@ -384,7 +389,7 @@ function SimpleConverter({
               }}
               onKeyDown={(e) => e.key === "Enter" && save()}
               placeholder={`₹ / ${unitData.labelHi}`}
-              className="w-full text-3xl font-bold text-gray-900 bg-transparent outline-none py-2 placeholder:text-gray-200 placeholder:font-normal placeholder:text-2xl"
+              className="w-full text-4xl font-bold text-gray-900 bg-transparent outline-none py-2 placeholder:text-gray-200"
             />
           </div>
         </div>
